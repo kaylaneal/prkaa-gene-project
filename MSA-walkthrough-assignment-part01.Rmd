@@ -1,0 +1,696 @@
+---
+title: "Bioinformatic Workflow"
+output: html_document
+editor_options:
+chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# A complete bioinformatics workflow in R
+
+<!-- TODO: create function to simplify the prepwork -->
+
+**By**: Nathan L. Brouwer
+**Modified By**: Makayla Neal
+
+# "Worked example: Building a phylogeny in R" 
+
+## Introduction
+
+Modern phylogenetic studies uses nucleotide sequences to classify evolutionary relationships between species. Phylogenetic Trees are created by aligning the sequences from the same/similar genes of multiple species. The tree is a visualization of an evolutionary hypothesis. 
+
+These kinds of studies provide information about what genes diverge, how species evolved, how evolution took place/what differed in the evolutionary pathway of species. Biologists can use phylogenetics to fuel larger theories about how evolution and genetics changes through time and between species. 
+
+
+
+### Vocab 
+
+1. phylogenetics
+2. sequence alignment
+3. function (in R environment)
+4. nucleotide sequence
+5. amino acid sequence
+6. gene
+7. pairwise v multiple sequence alignment
+8. class (in R environment)
+9. container (in R environment)
+10. set vs list vs vector (in R environment)
+
+
+### Key functions
+
+
+1. rentrez::entrez_fetch
+2. compbio4all::fasta_cleaner
+3. ggmsa::ggmsa
+4. Biostrings::PairwiseAlignment
+5. Biostrings::pid
+
+## Software Preliminaires
+
+If necessary, be sure to download the packages before trying to load them into memory:
+
+for github packages:
+  devtools::install_github("devloper_name/package") 
+    requires devtools to be installed via install.packages()
+
+for CRAN packages:
+  install.packages("package_name")
+  
+for Bioconductor:
+  install.packages("BioManager")
+  BioManager::install("package_name")
+
+
+### Load packages into memory
+
+```{r, message= F, warning=F}
+# github packages
+library(compbio4all)
+
+
+# CRAN packages
+library(rentrez)
+library(seqinr)
+library(ape)
+
+# Bioconductor packages
+library(msa)
+library(Biostrings)
+
+```
+
+
+
+
+## Retrieving macromolecular sequences
+
+This section will show how to transfer a sequence from the online database to the project you are working on. This section will make extensive use of the rentrez package.
+
+
+entrez_fetch is a function that takes a gene given by the id number (accession number) from the given database, then gives the output as a fasta file. We are essentially retrieving the necessary information from the database into a form that we can work with in R.
+
+```{r}
+# Human shroom 3 (H. sapiens)
+hShroom3 <- rentrez::entrez_fetch(db = "protein", 
+                          id = "NP_065910", 
+                          rettype = "fasta")
+```
+
+
+The cat() function helps convert the output into a readable format. For example, in a fasta file the line breaks are denoted by the new line character ('\n') instead of creating a new line, the cat() function adds the line break when it reads that character.
+
+```{r}
+cat(hShroom3)
+```
+
+
+This block is retrieving more versions of the shroom gene from the same database, in the same format, as the first gene.
+
+```{r}
+# Mouse shroom 3a (M. musculus)
+mShroom3a <- rentrez::entrez_fetch(db = "protein", 
+                          id = "AAF13269", 
+                          rettype = "fasta")
+
+# Human shroom 2 (H. sapiens)
+hShroom2 <- rentrez::entrez_fetch(db = "protein", 
+                          id = "CAA58534", 
+                          rettype = "fasta")
+
+
+# Sea-urchin shroom
+sShroom <- rentrez::entrez_fetch(db = "protein", 
+                          id = "XP_783573", 
+                          rettype = "fasta")
+```
+
+
+
+The nchar function counts the number of characters in the given vector. This call is on the raw data, so it will include all of the characters that are used to depict formatting (like new line). This function can be helpful to call before and after data modification to confirm the transformation did what was expected.
+
+```{r}
+nchar(hShroom3)
+nchar(mShroom3a)
+nchar(sShroom)
+nchar(hShroom2)
+```
+
+
+
+## Prepping macromolecular sequences
+### data cleaning
+
+The fasta_cleaner function is given in the compbio4all package and can be used to "clean up" a fasta file. In other words, this function takes a fasta file and removes the unnecessary characters and formatting to create a more readable, clean output. 
+
+```{r}
+fasta_cleaner
+```
+
+
+If downloading the package a function comes from isn't going smoothly, you can use the script of the function and import it by 1. saving the file and calling it before using it so that it is loaded into memory (above) or 2. copy the script into the project you are working on (below).
+In either circumstance it is CRITICAL that you credit the work you are using. 
+
+For example, fasta_cleaner is from the compbio4all package. If downloading the package wasn't working, I could go to the page on github and find the function I want to use. Here, the link is <https://github.com/brouwern/compbio4all/blob/master/R/fasta_cleaner.R>. since it isn't from a package downloaded in memory, I would put somewhere (as a comment in the code or where I loaded the other packages) who wrote the function and where to find it/what package it was supposed to be in.
+
+```{r}
+fasta_cleaner <- function(fasta_object, parse = TRUE){
+
+  fasta_object <- sub("^(>)(.*?)(\\n)(.*)(\\n\\n)","\\4",fasta_object)
+  fasta_object <- gsub("\n", "", fasta_object)
+
+  if(parse == TRUE){
+    fasta_object <- stringr::str_split(fasta_object,
+                                       pattern = "",
+                                       simplify = FALSE)
+  }
+
+  return(fasta_object[[1]])
+}
+
+```
+
+
+
+Here we are cleaning each fasta file downloaded from the protein database and overwritting the existing variable to be the version of the file that we cleaned.
+This simply means using the same variable name (hShroom3, for example) and assigning it to what is produced from the fasta_cleaner function.
+
+```{r}
+hShroom3  <- fasta_cleaner(hShroom3,  parse = F)
+mShroom3a <- fasta_cleaner(mShroom3a, parse = F)
+hShroom2  <- fasta_cleaner(hShroom2,  parse = F)
+sShroom   <- fasta_cleaner(sShroom,   parse = F)
+```
+
+
+
+
+```{r}
+hShroom3
+```
+
+
+## Aligning (Pairwise) sequences
+
+Below we are creating a pairwise alignment between the human shroom3 gene and the mouse shroom 3a gene. We are using this to compare the two sequences to find how similar or different they are from eachother. 
+
+```{r}
+align.h3.vs.m3a <- Biostrings::pairwiseAlignment(
+                  hShroom3,
+                  mShroom3a)
+```
+
+
+This object shows a summary of the alignment, including the two sequences and the score of the alignment.
+
+```{r}
+align.h3.vs.m3a
+```
+
+
+
+
+pid is percent identity. This function gives a quantitative measure of how similar two sequences are. This function also ignores indels within the sequences. In this case, human shroom3 and mouse shroom3a are 70% similar. 
+
+```{r}
+Biostrings::pid(align.h3.vs.m3a)
+```
+
+
+
+
+This pairwise alignment is between two human shroom genes: 3 and 2.
+
+```{r}
+align.h3.vs.h2 <- Biostrings::pairwiseAlignment(
+                  hShroom3,
+                  hShroom2)
+```
+
+
+
+The alignment score for two of the human shroom genes is printed below. The negative number suggests a low similarity. When comparing human3 to mouse3a, the score was positive, suggesting there was a significant amount of similarity.
+
+```{r}
+score(align.h3.vs.h2)
+```
+
+
+
+score() and pid() are calculated differently. Indels are ignored in pid and not in scores. The score is calculated by assigning a point value to each nucleotide/amino acid in the alignment (+1 for same, -1 for indel, 0 if different). pid takes the proportion of the matching elements in the alignment over the number of the elements in the sequence. pid can be done in proportion or percent as well as in similarity or dissimilarity. 
+
+```{r}
+Biostrings::pid(align.h3.vs.h2)
+```
+
+
+
+
+
+## The shroom family of genes
+
+This section is creating a dataframe of the genes to be analyzed. The first step is making a table that will be converting into the dataframe, and manipulating the data in the structure to work for what we want to do with it. 
+
+
+The table below has the 14 shroom genes of interest. Having this vector/table here allows us to create a dataframe that will give us an easy to read display of what data we are looking for. The columns are split between: Accession Number, Species, and Gene Name.
+
+```{r}
+shroom_table <- c("CAA78718" , "X. laevis Apx" ,         "xShroom1",
+            "NP_597713" , "H. sapiens APXL2" ,     "hShroom1",
+            "CAA58534" , "H. sapiens APXL",        "hShroom2",
+            "ABD19518" , "M. musculus Apxl" ,      "mShroom2",
+            "AAF13269" , "M. musculus ShroomL" ,   "mShroom3a",
+            "AAF13270" , "M. musculus ShroomS" ,   "mShroom3b",
+            "NP_065910", "H. sapiens Shroom" ,     "hShroom3",
+            "ABD59319" , "X. laevis Shroom-like",  "xShroom3",
+            "NP_065768", "H. sapiens KIAA1202" ,   "hShroom4a",
+            "AAK95579" , "H. sapiens SHAP-A" ,     "hShroom4b",
+            #"DQ435686" , "M. musculus KIAA1202" ,  "mShroom4",
+            "ABA81834" , "D. melanogaster Shroom", "dmShroom",
+            "EAA12598" , "A. gambiae Shroom",      "agShroom",
+            "XP_392427" , "A. mellifera Shroom" ,  "amShroom",
+            "XP_783573" , "S. purpuratus Shroom" , "spShroom") #sea urchin
+```
+
+
+
+The below chunk of code is what will create the dataframe:
+
+```{r}
+# convert to a Matrix
+shroom_table_matrix <- matrix(shroom_table,
+                                  byrow = T,
+                                  nrow = 14)
+# convert to a DataFrame
+shroom_table <- data.frame(shroom_table_matrix, 
+                     stringsAsFactors = F)
+
+# creating columns
+names(shroom_table) <- c("accession", "name.orig","name.new")
+
+# Create simplified species names
+shroom_table$spp <- "Homo"
+shroom_table$spp[grep("laevis",shroom_table$name.orig)] <- "Xenopus"
+shroom_table$spp[grep("musculus",shroom_table$name.orig)] <- "Mus"
+shroom_table$spp[grep("melanogaster",shroom_table$name.orig)] <- "Drosophila"
+shroom_table$spp[grep("gambiae",shroom_table$name.orig)] <- "mosquito"
+shroom_table$spp[grep("mellifera",shroom_table$name.orig)] <- "bee"
+shroom_table$spp[grep("purpuratus",shroom_table$name.orig)] <- "sea urchin"
+
+```
+
+
+When calling the variable by itself, the console will print the object stored in that variable. Here we are printing the dataframe we created above:
+
+```{r}
+shroom_table
+```
+
+## Aligning multiple sequences 
+
+
+The '$' notation in R allows you to access the entire column of a dataframe. Below we are taking the accession column from the shroom_table dataframe and printing its contents.
+
+```{r}
+shroom_table$accession
+```
+
+
+
+Using the '$' notation from above, we can transfer the fasta files from each gene in one line of code, just as we did with each individual one before.
+
+```{r}
+shrooms <- rentrez::entrez_fetch(db = "protein", 
+                          id = shroom_table$accession, 
+                          rettype = "fasta")
+```
+
+
+
+As stated above, cat() respects the formatting characters of fasta files that R does not recognize as formatting. Below, we are taking all of the fasta files we transferred and making R format them as they were meant to be.
+
+```{r, eval = F}
+cat(shrooms)
+```
+
+
+
+
+entrez_fetch_list is a wrapper function in compbio4all that modifies a the function entrez_fetch from the rentrez package. The important distinction is this function creates a list containing each of the 14 genes. The other function used above creates one long file with all of the sequences, here they are separated.
+
+```{r}
+shrooms_list <- entrez_fetch_list(db = "protein", 
+                          id = shroom_table$accession, 
+                          rettype = "fasta")
+```
+
+
+
+The length of shrooms_list should be 14, running the length() function allows you to check the above call and make sure the information you have is what you expect. The 14 elements are the individual fasta files from each gene we are interested in.
+
+```{r}
+length(shrooms_list)
+```
+
+
+
+The for loop below is taking each element in shrooms_list (each fasta file taken from the database) and using the fasta_cleaner function to reformat the file.
+
+```{r}
+for(i in 1:length(shrooms_list)){
+  shrooms_list[[i]] <- fasta_cleaner(shrooms_list[[i]], parse = F)
+}
+```
+
+
+The below code chunk is using the list created above to make a vector with the same data and organization. 
+
+```{r}
+# create a vector that is the length of shrooms_list and is filled with NA values
+shrooms_vector <- rep(NA, length(shrooms_list))
+
+# copy each element in shrooms_list into the corresponding index of shrooms_vector
+for(i in 1:length(shrooms_vector)){
+  shrooms_vector[i] <- shrooms_list[[i]]
+}
+
+#  give the column titles of shrooms_list to shrooms_vector
+names(shrooms_vector) <- names(shrooms_list)
+```
+
+
+
+AAStringSet class is a container for storing sets of Amino Acid String objects. The function AAStringSet() is used to create that class. This class makes manipulation of the objects easy and efficient. 
+
+```{r}
+shrooms_vector_ss <- Biostrings::AAStringSet(shrooms_vector)
+```
+
+
+## MSA
+
+An MSA is a Multiple Sequence Alignment. Similar to the PairWise Alignments we were doing before, MSAs compare and align more than just 2 sequences. In the following section we will create one alignment that includes all 14 genes of interest. 
+
+
+
+### Building a Multiple Sequence Alignment (MSA)
+
+
+
+The msa function creates the multiple sequence alignment. The output of this code, as we will see below, creates a table that is hard to read and lacking the visual we are looking for. There is a lot happening in this chunk even though it appears like a simple taks (only two arguments!): it will take a little time for it to run.
+
+```{r}
+shrooms_align <- msa(shrooms_vector_ss,
+                     method = "ClustalW")
+```
+
+
+### Viewing an MSA
+
+Viewing an MSA can be done in a couple ways. This section is going to explore how different outputs look and the type of data preperation required to make the exact visual we want.
+
+
+#### Viewing an MSA in R
+
+
+TODO: The default MSA print structure in R is shown below. The table is sparesly filled and does not appear to have an agreed upon consensus sequence. Overall, the information given here is not sufficient or useful. But there is a way to fix that!
+
+```{r}
+shrooms_align
+```
+
+
+
+The following steps are part of the data preparation process. The first statement is changing the class of shrooms_align from MsaAAMultipleAlignment to AAMultipleAlignment. This is essentially changing what we did above back to just the alignment and not the MSA. The second statement is creating a new variable that is converting shrooms_align to a class of alignment.
+
+```{r}
+# changing the class of the shrooms_align object to AAMultipleAlignment
+class(shrooms_align) <- "AAMultipleAlignment"
+
+# assigning a new variable the new version of shrooms_align msa
+shrooms_align_seqinr <- msaConvert(shrooms_align, type = "seqinr::alignment")
+```
+
+
+
+
+Below is the new version of our MSA. This output is still very hard to look at and interpret, but it shows that progress is being made.
+
+```{r, eval = F}
+print_msa(alignment = shrooms_align_seqinr, 
+          chunksize = 60)
+```
+
+#### Displaying an MSA as an R Plot
+
+
+
+ggmsa is a function that creates the diagram, colorcoded version of an MSA that we were looking for. The same 100 amino acids for each gene is listed and colored according the the amino acids chemical property. The organization of this chart compared to the others we've made is far superior because of how easy it is to look at and understand. Even without a visable concensous sequence, we can easily figure out what it might be. The readablity of this graph is what we were looking for.
+
+```{r}
+# key step - must have class set properly
+class(shrooms_align) <- "AAMultipleAlignment"
+
+ggmsa::ggmsa(shrooms_align,   # shrooms_align, NOT shrooms_align_seqinr
+      start = 2000, 
+      end = 2100) 
+```
+
+
+
+#### Saving an MSA as PDF
+
+
+If this function were to work, it would take the above MSA we made and create/save a pdf version of it to the current directory you are working in.
+
+In order for this to work you need to have a program called LaTex installed on your computer.  LaTex can occasionally be tricky to install so you can skip this step if necessary.
+If you want to try to install LaTex, you can run this code to see if it works
+for you
+
+```{r, eval = F}
+'''
+install.packages("tinytex")
+install_tinytex()
+'''
+```
+
+Currently it is throwing a texi2dvi error, so it is commented out for now.
+```{r, eval = F}
+'''
+msa::msaPrettyPrint(shrooms_align,             # alignment
+               file = "shroom_msa.pdf",   # file name
+               y=c(2000, 2100),           # range
+               askForOverwrite=FALSE)
+'''
+```
+
+
+getwd() prints the current directory you are in ie your "Working Directory". This is also the path in which the file is saved on your computer.
+
+```{r}
+getwd()
+```
+
+## A subset of sequences
+
+To make things easier we'll move forward with just a subset of sequences:
+
+* XP_392427: amShroom (bee shroom)
+* EAA12598: agShroom (mosquito shroom)
+* ABA81834: dmShroom (*Drosophila* shroom)
+* XP_783573: spShroom (sea urchin shroom)
+* CAA78718: xShroom1 (frog shroom)
+
+
+Our main working object shrooms_vector_ss has the names of our genes listed
+```{r}
+names(shrooms_vector_ss)
+```
+
+We can select the ones we want to focus on be first making a vector of the names
+```{r}
+names.focal <- c("XP_392427","EAA12598","ABA81834","XP_783573","CAA78718")
+```
+
+We can use this vector and bracket notation to select the what we want from shrooms_vector_ss:
+
+```{r}
+shrooms_vector_ss[names.focal]
+```
+
+Let's assign the subset of sequences to a new object called shrooms_vector_ss_subset.
+```{r}
+shrooms_vector_ss_subset <- shrooms_vector_ss[names.focal]
+```
+
+Let's make another MSA with just this subset.  If msa isn't working for you you can comment this out.
+```{r}
+shrooms_align_subset <- msa(shrooms_vector_ss_subset,
+                     method = "ClustalW")
+```
+
+
+To view it using ggmsa we need to do those annoying conversions again.
+```{r}
+class(shrooms_align_subset) <- "AAMultipleAlignment"
+shrooms_align_subset_seqinr <- msaConvert(shrooms_align_subset, type = "seqinr::alignment")
+```
+
+THen we can plot it
+```{r}
+ggmsa::ggmsa(shrooms_align_subset,   # shrooms_align, NOT shrooms_align_seqinr
+      start = 2030, 
+      end = 2100) 
+```
+
+
+We can save our new smaller MSA like this.
+```{r, eval = F}
+msaPrettyPrint(shrooms_align_subset,             # alignment
+               file = "shroom_msa_subset.pdf",   # file name
+               y=c(2030, 2100),           # range
+               askForOverwrite=FALSE)
+```
+
+
+
+## Genetic distances of sequence in subset
+
+While an MSA is a good way to examine a sequence its hard to assess all of the information visually.  A phylogenetic tree allows you to summarize patterns in an MSA.  The fastest way to make phylogenetic trees to is first summarize an MSA using a **genetic distance matrix**.   The more amino acids that are identical to each other, the smaller the genetic distance is between them and the less evolution has occurred.  
+
+We usually work in terms of *difference* or **genetic distance** (a.k.a. **evolutionary distance**), though often we also talk in terms of similarity or identity. 
+
+Calculating genetic distance from an MSA is done using the `seqinr::dist.alignment()` function.
+```{r}
+shrooms_subset_dist <- seqinr::dist.alignment(shrooms_align_subset_seqinr, 
+                                       matrix = "identity")
+
+
+```
+
+This produces a "dist" class object.
+```{r}
+is(shrooms_subset_dist)
+class(shrooms_subset_dist)
+```
+
+If you've been having trouble with the MSA software, the data necessary to build the distance matrix directly in R is in this code chunk (you can ignore the details).
+
+```{r}
+shrooms_subset_dist_alt <- matrix(data = NA,
+                              nrow = 5, 
+                              ncol = 5)
+
+distances <- c(0.8260049, 
+               0.8478722, 0.9000568, 
+               0.9244596, 0.9435187, 0.9372139, 
+               0.9238779, 0.9370038, 0.9323225,0.9413209)
+shrooms_subset_dist_alt[lower.tri(shrooms_subset_dist_alt)] <- distances
+
+seqnames <- c("EAA12598","ABA81834","XP_392427", "XP_783573","CAA78718")
+colnames(shrooms_subset_dist_alt) <- seqnames
+row.names(shrooms_subset_dist_alt)  <- seqnames
+shrooms_subset_dist_alt <- as.dist(shrooms_subset_dist_alt)
+shrooms_subset_dist <- shrooms_subset_dist_alt
+```
+
+
+We've made a matrix using `dist.alignment()`; let's round it off so its easier to look at using the `round()` function.
+```{r}
+shrooms_subset_dist_rounded <- round(shrooms_subset_dist,
+                              digits = 3)
+```
+
+If we want to look at it we can type
+```{r eval = T}
+shrooms_subset_dist_rounded
+```
+
+Not that we have 5 sequence, but the matrix is 4 x 4.  This is because redundant information is dropped, including distances from one sequence to itself.  This makes it so that the first column is EAA12598, but the first row is ABA81834.
+
+
+## Phylognetic trees of subset sequences (finally!)
+
+We got our sequences, built a multiple sequence alignment, and calculated the genetic distance between sequences.  Now we are - finally - ready to build a phylogenetic tree.
+
+First, we let R figure out the structure of the tree.  There are **MANY** ways to build phylogenetic trees.  We'll use a common one used for exploring sequences called **neighbor joining** algorithm via the function `nj()`.  Neighbor joining uses genetic distances to cluster sequences into **clades**.  
+
+nj() is simple function that takes only a single argument, a distance matrix.
+```{r}
+# Note - not using rounded values
+tree_subset <- nj(shrooms_subset_dist)
+```
+
+### Plotting phylogenetic trees 
+
+Now we'll make a quick plot of our tree using `plot()` (and add a little label using an important function called `mtext()`).
+```{r}
+# plot tree
+plot.phylo(tree_subset, main="Phylogenetic Tree", 
+            type = "unrooted", 
+            use.edge.length = F)
+
+# add label
+mtext(text = "Shroom family gene tree - UNrooted, no branch lengths")
+```
+
+This is an **unrooted tree** with no outgroup defined.  For the sake of plotting we've also ignored the evolutionary distance between the sequences, so the branch lengths don't have meaning.
+
+To make a rooted tree we remove `type = "unrooted`.  In the case of neighbor joining, the algorithm tries to figure out the outgroup on its own.
+
+```{r}
+# plot tree
+plot.phylo(tree_subset, main="Phylogenetic Tree", 
+            use.edge.length = F)
+
+# add label
+mtext(text = "Shroom family gene tree - rooted, no branch lenths")
+```
+
+
+We can include information about branch length by setting `use.edge.length = ...` to `T`. 
+
+```{r}
+# plot tree
+plot.phylo(tree_subset, main="Phylogenetic Tree", 
+            use.edge.length = T)
+
+# add label
+mtext(text = "Shroom family gene tree - rooted, with branch lenths")
+```
+
+Now the length of the branches indicates the evolutionary distance between sequences and correlate to the distances reported in our distance matrix.  The branches are all very long, indicating that these genes have been evolving independently for many millions of years.
+
+An important note: the vertical lines on the tree have no meaning, only the horizontal ones.
+
+Because the branch lengths are all so long I find this tree a bit hard to view when its rooted.  Let's make it unrooted again.
+```{r}
+# plot tree
+plot.phylo(tree_subset, main="Phylogenetic Tree", 
+           type = "unrooted",
+            use.edge.length = T)
+
+# add label
+mtext(text = "Shroom family gene tree - rooted, with branch lenths")
+```
+
+Now you can see that the ABA and EAA sequences form a clade, and that the distance between them is somewhat smaller than the distance between other sequences.  If we go back to our original distance matrix, we can see that the smallest genetic distance is between ABA and EAA at 0.826.
+
+```{r}
+shrooms_subset_dist_rounded
+```
+
+We can confirm that this is the minimum using the min() function.
+
+```{r}
+min(shrooms_subset_dist_rounded)
+```
+
+
+
+
