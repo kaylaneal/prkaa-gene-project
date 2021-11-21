@@ -1,0 +1,270 @@
+---
+title: "Investigating your shroom for the presence of repeats"
+author: "Nathan Brouwer modified by Kayla Neal"
+date: "10/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Add the necessary code to make this script function.
+
+## Preliminaries
+
+### Load packages
+
+```{r}
+library(seqinr)
+library(rentrez)
+library(compbio4all)
+library(Biostrings)
+```
+
+
+
+### Get data shroom data
+
+Download sequence of hShroom 3 protein: NP_001166171.1
+
+```{r}
+shroom3 <- rentrez::entrez_fetch(id = "NP_001166171.1",
+                                      db = "protein", 
+                                      rettype="fasta")
+```
+
+Clean and set up sequence as vector.
+
+```{r}
+shroom3_vector <- fasta_cleaner(shroom3)
+```
+
+Confirm set up using str()
+```{r}
+str(shroom3_vector)
+```
+
+
+Check length - Shroom is on the big end of proteins 
+```{r}
+length(shroom3_vector)
+```
+
+I am therefore going to subset it initially so the example plots don't take as long to make
+```{r}
+shroom3_vector <- shroom3_vector[1:400]
+```
+
+
+
+Make a 2 x 2 grid of dotplots to explore effect of changing window size and nmatch
+```{r}
+# set up 2 x 2 grid, make margins thinner
+par(mfrow = c(2,2), 
+    mar = c(0,0,2,1))
+
+# plot 1: Shroom - Defaults
+dotPlot(shroom3_vector, 
+        shroom3_vector, 
+        wsize = 1, 
+        nmatch = 1, 
+        main = "Shroom Defaults")
+
+# plot 2 Shroom - size = 10, nmatch = 1
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 10, 
+        nmatch = 1, 
+        main = "Shroom - size = 10, nmatch = 1")
+
+# plot 3: Shroom - size = 10, nmatch = 5
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 10, 
+        nmatch = 5, 
+        main = "Shroom - size = 10, nmatch = 5")
+
+# plot 4: size = 20, nmatch = 5
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 20,
+        nmatch =5,
+        main = "Shroom - size = 20, nmatch = 5")
+
+# reset par() - run this or other plots will be small!
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+```
+
+
+Make ANOTHER  2 x 2 grid of dotplots to explore effect of changing window size and nmatch
+```{r}
+# set up 2 x 2 grid, make margins thinner
+par(mfrow = c(2,2), 
+    mar = c(0,0,2,1))
+
+# plot 1: 
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 30, 
+        nmatch = 5 , 
+        main = "Shroom 30 / 5")
+
+# plot 2 Shroom
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 30, 
+        nmatch = 10, 
+        main = "Shroom - size = 30, nmatch = 10")
+
+# plot 3: Shroom
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 5, 
+        nmatch = 2, 
+        main = "Shroom - size = 5, nmatch = 2")
+
+# plot 4:Shroom
+dotPlot(shroom3_vector, shroom3_vector, 
+        wsize = 12,
+        nmatch = 4,
+        main = "Shroom - size = 12, nmatch = 4")
+
+# reset par() - run this or other plots will be small!
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+```
+
+
+
+##  Best plot using normal dotplot
+
+This is the most interesting shroom dotplot based on the changes investigated above
+
+```{r}
+# be sure to run par - re-run just in case
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+dotPlot(shroom3_vector, 
+        shroom3_vector,
+        wsize = 10, 
+        nmatch = 5, 
+        main = "Shroom window = 10, match = 5")
+```
+
+
+
+
+## Full-length plot
+
+```{r}
+dot_plot <- function(seq1, seq2, wsize = 1, wstep = 1, nmatch = 1, col = c("white", 
+    "black"), xlab = deparse(substitute(seq1)), ylab = deparse(substitute(seq2)), 
+    ...) {
+  
+  # make sure input works
+    if (nchar(seq1[1]) > 1) 
+        stop("seq1 should be provided as a vector of single chars")
+    if (nchar(seq2[1]) > 1) 
+        stop("seq2 should be provided as a vector of single chars")
+    if (wsize < 1) 
+        stop("non allowed value for wsize")
+    if (wstep < 1) 
+        stop("non allowed value for wstep")
+    if (nmatch < 1) 
+        stop("non allowed value for nmatch")
+    if (nmatch > wsize) 
+        stop("nmatch > wsize is not allowed")
+  
+  # internal function
+    mkwin <- function(seq, wsize, wstep) {
+        sapply(seq(from = 1, to = length(seq) - wsize + 1, by = wstep), 
+            function(i) c2s(seq[i:(i + wsize - 1)]))
+    }
+    wseq1 <- mkwin(seq1, wsize, wstep)
+    wseq2 <- mkwin(seq2, wsize, wstep)
+    if (nmatch == wsize) {
+        xy <- outer(wseq1, wseq2, "==")
+    }
+    else {
+        "%==%" <- function(x, y) colSums(sapply(x, s2c) == sapply(y, 
+            s2c)) >= nmatch
+        xy <- outer(wseq1, wseq2, "%==%")
+    }
+    
+    # compile output in list
+    out <- list(x = seq(from = 1, to = length(seq1), length = length(wseq1)),
+                y = seq(from = 1, to = length(seq2), length = length(wseq2)),
+                z = xy)
+}
+
+```
+
+Use the new dotplot function defined above on the full-length protein, save output (doesn't autoplot)
+```{r}
+my_dot_out <- dot_plot(shroom3_vector,
+                       shroom3_vector, 
+        wsize = 10, 
+        wstep = 5,
+        nmatch = 5)
+```
+
+Get rid of upper triangular portion
+```{r}
+my_dot_out$z[lower.tri(my_dot_out$z)] <- FALSE
+
+```
+
+Do some weird prep (don't worry about it)
+```{r}
+my_dot_out$z <- my_dot_out$z[, nrow(my_dot_out$z):1]
+```
+
+Plot using image() command. 
+```{r}
+# seriously - it will drive you crazy if you forget about this
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+# plot with image()
+image(x = my_dot_out$x, 
+      y = my_dot_out$y, 
+      z = my_dot_out$z, 
+      main ="Shroom3" )
+```
+
+## Focal subplot
+
+Use new function on the full-length protein, save output (doesn't autoplot).
+Subset from 200 to 400
+```{r}
+my_dot_out <- dot_plot(shroom3_vector[200:400],
+                       shroom3_vector[200:400], 
+        wsize = 15, 
+        wstep = 1,
+        nmatch = 5)
+```
+
+Get rid of upper triangular portion
+```{r}
+my_dot_out$z[lower.tri(my_dot_out$z)] <- FALSE
+
+```
+
+Do some weird prep (don't worry about it)
+```{r}
+my_dot_out$z <- my_dot_out$z[, nrow(my_dot_out$z):1]
+```
+
+Plot using image() command.
+```{r}
+# seriously - it will drive you crazy if you forget about this
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+# plot with image()
+image(x = my_dot_out$x, 
+      y = my_dot_out$y, 
+      z = my_dot_out$z, 
+      main = "Shroom Repeats DotPlot")
+```
+
+
+

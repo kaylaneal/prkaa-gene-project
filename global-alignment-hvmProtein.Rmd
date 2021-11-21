@@ -1,0 +1,194 @@
+---
+title: "global-alignment-protein-project"
+author: Kayla Neal
+output: html_document
+---
+# Global Protein Sequence Alignments
+## Credit:
+original code by Avril Coghlan, adapted by Nathan Brouwer, adapted by Kayla Neal
+
+## Preliminaries
+
+Load necessary packages into memory:
+```{r, message = F, warning = F}
+library(compbio4all)
+library(Biostrings)
+```
+
+# Downloading Sequences
+
+```{r} 
+# Sequence 1: PRKAA1 Human
+prk_h <- rentrez::entrez_fetch(db = "protein",
+                               id = "NP_006242.5",
+                               rettype = "FASTA")
+
+# Sequence 2: PRKAA1 Mouse
+prk_m <- rentrez::entrez_fetch(db = "protein",
+                               id = "NP_001013385.3",
+                               rettype = "FASTA")
+
+# clean files
+prk_hv <- compbio4all::fasta_cleaner(prk_h)
+prk_mv <- compbio4all::fasta_cleaner(prk_m)
+
+```
+
+## Pairwise global alignment of DNA sequences using the Needleman-Wunsch algorithm
+
+If you are studying a particular pair of genes or proteins, an important question is to what extent the two sequences are similar.
+
+To quantify similarity, it is necessary to **align** the two sequences, and then you can calculate a similarity score based on the alignment.
+
+There are two types of alignment in general. A **global alignment** is an alignment of the *full* length of two sequences from beginning to end, for example, of two protein sequences or of two DNA sequences. A **local alignment** is an alignment of part of one sequence to part of another sequence; the parts the end up getting aligned are the most similar, and determined by the alignment algorithm.
+
+The first step in computing a alignment (global or local) is to decide on a **scoring system**. For example, we may decide to give a score of +2 to a match and a penalty of -1 to a mismatch, and a penalty of -2 to a **gap** due to an **indel**. 
+
+ex) for the alignment:
+
+```{r echo = F}
+"G A A T T C"
+"G A T T - A"
+```
+we would compute a score of 
+
+1. G vs G = match    = 2
+1. A vs A = match    = 2
+1. A vs T = mismatch = -1
+1. T vs T = match    = 2
+1. T vs - = gap      = -2
+1. C vs A = mismatch = -1
+
+So, the scores is 2 + 2 -1 + 2 -2 - 1 = 2. 
+
+The **scoring system** above can be represented by a **scoring matrix** (also known as a **substitution matrix**). The scoring matrix has one row and one column for each possible letter in our alphabet of letters (e.g. 4 rows and 4 columns for DNA and RNA sequences, 20 x 20 for amino acids). The (i,j) element of the matrix has a value of +2 in case of a match and -1 in case of a mismatch.
+
+We can make a scoring matrix in R by using the `nucleotideSubstitutionMatrix()` function in the `Biostrings` package.  `Biostrings` is part of a set of R packages for bioinformatics analysis known as [Bioconductor](www.bioconductor.org/) (www.bioconductor.org/).
+
+The arguments (inputs) for the `nucleotideSubstitutionMatrix()` function are the score that we want to assign to a match and the score that we want to assign to a mismatch. We can also specify that we want to use only the four letters representing the four nucleotides (i.e.. A, C, G, T) by setting `baseOnly=TRUE`, or whether we also want to use the letters that represent **ambiguous cases** where we are not sure what the nucleotide is (e.g. ‘N’ = A/C/G/T; ambiguous cases occur in some sequences due to sequencing errors or ambiguities).
+
+To make a scoring matrix which assigns a score of +2 to a match and -1 to a mismatch, and store it in the variable `sigma`, we type:
+
+```{r}
+# make the matrix
+sigma <- nucleotideSubstitutionMatrix(match = 2, 
+                                      mismatch = -1, 
+                                      baseOnly = TRUE)
+# Print out the matrix
+sigma 
+```
+
+Instead of assigning the same penalty (e.g. -8) to every gap position, it is common instead to assign a **gap opening penalty** to the first position in a gap (e.g. -8), and a smaller **gap extension penalty** to every subsequent position in the same gap.
+
+The reason for doing this is that it is likely that adjacent gap positions were created by the same insertion or deletion event, rather than by several independent insertion or deletion events. Therefore, we don’t want to penalize a 3-letter gap (AAA---AAA) as much as we would penalize three separate 1-letter gaps (AA-A-A-AA), as the 3-letter gap may have arisen due to just one insertion or deletion event, while the 3 separate 1-letter gaps probably arose due to three independent insertion or deletion events.
+
+For example, if we want to compute the score for a global alignment of two short DNA sequences ‘GAATTC’ and ‘GATTA’, we can use the **Needleman-Wunsch** algorithm to calculate the highest-scoring alignment using a particular scoring function.
+
+The `pairwiseAlignment()` function in the Biostrings package finds the score for the optimal global alignment between two sequences using the Needleman-Wunsch algorithm, given a particular scoring system.
+
+As arguments (inputs), `pairwiseAlignment()` takes 
+
+1. the two sequences that you want to align, 
+1. the scoring matrix, 
+1. the gap opening penalty, and 
+1. the gap extension penalty. 
+
+## Pairwise Global Alignment Protein Sequences -- Needleman Wunsch Algorithm
+
+There are several well known scoring matrices that come with *R*, such as the **BLOSUM** series of matrices. Different BLOSUM matrices exist, named with different numbers. BLOSUM with high numbers are designed for comparing closely related sequences, while BLOSUM with low numbers are designed for comparing evolutionarily distantly related sequences. For example, **BLOSUM62** is used for **less divergent alignments** (alignments of sequences that differ little / have less evolutionary distance between them), and **BLOSUM30** is used for more divergent alignments (alignments of sequences that differ a lot / their common ancestor is further in the past).
+
+```{r}
+data(BLOSUM50)
+```
+
+The output from pairwiseAlignment() is pretty simple and only indicates indels ("-") and the sequences themselves.  In other programs like Needle and BLAST you'll get a richer output that indicates direct matches, relatively similar positions that are mismatches, and disimilar mismatches.  For example, Needle uses "|" to indicate direct matches, colons ":" to indicate chemically amino acids / evolutionarily favorable mismatches, and periods "." to indicate chemically dis-disimilar / evolutionarily less common mismatches. 
+
+## Aligning UniProt Sequences
+
+```{r}
+# Human PRKAA1
+uprk_h <- rentrez::entrez_fetch(db = "protein",
+                                id = "Q13131",
+                                rettype = "FASTA")
+
+# Mouse PRKAA1
+uprk_m <- rentrez::entrez_fetch(db = "protein",
+                                id = "Q5EG47",
+                                rettype = "FASTA")
+
+uprk_h_v <- compbio4all::fasta_cleaner(uprk_h)
+uprk_m_v <- compbio4all::fasta_cleaner(uprk_m)
+```
+
+```{r}
+# Convert Vectors to Strings
+uprkH <- paste(uprk_h_v, collapse = "")
+uprkM <- paste(uprk_m_v, collapse = "")
+
+# Ensure letters are uppercase
+uprkH <- toupper(uprkH)
+uprkM <- toupper(uprkM)
+
+# check output
+uprkH[1:25]
+```
+
+Create a Global Alignment:
+```{r}
+globalAlign <- Biostrings::pairwiseAlignment(uprkH, uprkM,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+```
+
+
+To view the alignment, run `globalAlign` -- this will only show the beginning and end of the alignment since it is so long. The compbio4all package includes a function that prints the alignment in blocks
+```{r}
+compbio4all::print_pairwise_alignment(globalAlign)
+```
+
+## Alignment Statistics
+
+The `score()` and `pid()` of an alignment are important statistics to explore.
+
+There is more than one way to define PID.  You can get different formulations by consulting the help file for pid() and selecting the one you want with the type = argument, e.g.
+```{r}
+score(globalAlign)
+pid(globalAlign)
+
+print("PID 1:") 
+pid(globalAlign, type = "PID1")
+print("PID 2:")
+pid(globalAlign, type = "PID2")
+print("PID 3:") 
+pid(globalAlign, type = "PID3")
+print("PID 4:") 
+pid(globalAlign, type = "PID4")
+
+```
+
+## Replicating Default Needle Settings:
+
+When using the [Needle aglorthim](https://www.ebi.ac.uk/Tools/psa/emboss_needle/) the scoring parameters are as follows:
+
+Gap Open = 10
+Gap Extend = 0.5
+Matrix EBLOSUM62
+
+To translate this to R code, do another pairwise alignment, following the standards set by Needle.
+
+```{r}
+data(BLOSUM62)
+
+globalAlign_needle <- Biostrings::pairwiseAlignment(uprkH, uprkM,
+                                              substitutionMatrix = BLOSUM62,
+                                              gapOpening = -10,
+                                              gapExtension = -0.5,
+                                              scoreOnly = FALSE)
+
+compbio4all::print_pairwise_alignment(globalAlign_needle)
+
+score(globalAlign_needle)
+pid(globalAlign_needle)
+```

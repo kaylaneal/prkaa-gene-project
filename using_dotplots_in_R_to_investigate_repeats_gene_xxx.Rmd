@@ -1,0 +1,283 @@
+---
+title: "Using R to investigate gene PRKAA1 for sequence repeates"
+author: "Nathan Brouwer modified by Kayla Neal"
+date: "10/25/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+1. Change the XXXXX of the title to your gene name.
+1. Change the names and text appropriately to reflect your gene / protein.
+1. Add the necessary code to make this script functional.
+1. Download the PROTEIN sequence of your gene.
+1. Adapting the code below, make 2 grids of 4 plots (8 plots total) exploring different settings for window size and the match threshold (nmatch)
+1. Use the modified dotplot function to make a plot of your whole gene with only one part shown.
+1. Use the modified dotplot function to plot just a focal section of your gene.
+1. Make sure that all plots have titles relevant to your gene.
+
+This script is based on the Shroom example used in a previous Portfolio assignment.
+
+
+
+
+## Preliminaries
+
+### Load packages
+
+```{r}
+library(seqinr)
+library(rentrez)
+library(compbio4all)
+library(Biostrings)
+```
+
+
+
+### Get gene PRKAA1 data
+
+Download sequence of NP_006242.5
+```{r}
+ prkaa_FASTA <- rentrez::entrez_fetch(id = "NP_006242.5",
+                                      db = "protein", 
+                                      rettype="fasta")
+```
+
+Clean and set up sequence as vector.
+
+```{r}
+prkaa_vector <- fasta_cleaner(prkaa_FASTA)
+```
+
+Confirm set up.
+```{r}
+str(prkaa_vector)
+```
+
+Make a 2 x 2 grid of dotplots to explore effect of changing window size and nmatch
+```{r}
+# set up 2 x 2 grid, make margins thinner
+par(mfrow = c(2,2), 
+    mar = c(0,0,2,1))
+
+# plot 1:  Defaults
+dotPlot(prkaa_vector,
+        prkaa_vector, 
+        wsize = 1, 
+        nmatch = 1, 
+        main = "PRKAA Defaults")
+
+# plot 2: size = 10, nmatch = 1
+dotPlot(prkaa_vector,
+        prkaa_vector, 
+        wsize = 10, 
+        nmatch = 1, 
+        main = " PRKAA- size = 10, nmatch = 1")
+
+# plot 3: size = 10 , nmatch = 5
+dotPlot(prkaa_vector,
+        prkaa_vector, 
+        wsize = 10, 
+        nmatch = 5, 
+        main = "PRKAA - size = 10, nmatch = 5")
+
+# plot 4: size = 20 , nmatch = 5
+dotPlot(prkaa_vector,
+        prkaa_vector,  
+        wsize = 20,
+        nmatch = 5,
+        main = "PRKAA - size = 20, nmatch = 5")
+
+# reset par() - run this or other plots will be small!
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+```
+
+
+Make ANOTER 2 x 2 grid of dotplots to explore effect of changing window size and nmatch
+
+
+```{r}
+# set up 2 x 2 grid, make margins thinner
+par(mfrow = c(2,2), 
+    mar = c(0,0,2,1))
+
+# plot 1: 
+dotPlot(prkaa_vector[0:200],
+        prkaa_vector[0:200],  
+        wsize = 20, 
+        nmatch = 5, 
+        main = "PRKAA region [0:200] w=20")
+
+# plot 2: 
+dotPlot(prkaa_vector[0:200],
+        prkaa_vector[0:200],  
+        wsize = 30, 
+        nmatch = 5, 
+        main = "PRKAA region [0:200] w=30")
+
+# plot 3:
+dotPlot(prkaa_vector[200:400],
+        prkaa_vector[200:400], 
+        wsize = 30, 
+        nmatch = 5, 
+        main = "PRKAA region [200:400] w=30")
+
+# plot 4: 
+dotPlot(prkaa_vector[100:200],
+        prkaa_vector[100:200], 
+        wsize = 40,
+        nmatch = 5,
+        main = "PRKAA region [100:200] w=40")
+
+# reset par() - run this or other plots will be small!
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+```
+
+
+
+##  Best plot using normal dotplot
+
+This is the most interesting gene PRKAA1 dotplot.
+```{r}
+# be sure to run par - re-run just in case
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+dotPlot(prkaa_vector[100:200],
+        prkaa_vector[100:200], 
+        wsize = 40, 
+        nmatch = 5,
+        main = "PRKAA[100:200] w=40, m=5")
+```
+
+
+
+## New dotplot function
+
+The code below makes a new dotplot function
+
+Make new function 
+```{r}
+dot_plot <- function(seq1, seq2, wsize = 1, wstep = 1, nmatch = 1, col = c("white", 
+    "black"), xlab = deparse(substitute(seq1)), ylab = deparse(substitute(seq2)), 
+    ...) {
+  
+  # make sure input works
+    if (nchar(seq1[1]) > 1) 
+        stop("seq1 should be provided as a vector of single chars")
+    if (nchar(seq2[1]) > 1) 
+        stop("seq2 should be provided as a vector of single chars")
+    if (wsize < 1) 
+        stop("non allowed value for wsize")
+    if (wstep < 1) 
+        stop("non allowed value for wstep")
+    if (nmatch < 1) 
+        stop("non allowed value for nmatch")
+    if (nmatch > wsize) 
+        stop("nmatch > wsize is not allowed")
+  
+  # internal function
+    mkwin <- function(seq, wsize, wstep) {
+        sapply(seq(from = 1, to = length(seq) - wsize + 1, by = wstep), 
+            function(i) c2s(seq[i:(i + wsize - 1)]))
+    }
+    wseq1 <- mkwin(seq1, wsize, wstep)
+    wseq2 <- mkwin(seq2, wsize, wstep)
+    if (nmatch == wsize) {
+        xy <- outer(wseq1, wseq2, "==")
+    }
+    else {
+        "%==%" <- function(x, y) colSums(sapply(x, s2c) == sapply(y, 
+            s2c)) >= nmatch
+        xy <- outer(wseq1, wseq2, "%==%")
+    }
+    
+    # compile output in list
+    out <- list(x = seq(from = 1, to = length(seq1), length = length(wseq1)),
+                y = seq(from = 1, to = length(seq2), length = length(wseq2)),
+                z = xy)
+}
+
+```
+
+## Full-length plot
+
+Use new function on the full-length protein, save output (doesn't autoplot)
+```{r}
+my_dot_out <- dot_plot(prkaa_vector,
+        prkaa_vector,  
+        wsize = 40, 
+        wstep = 1,
+        nmatch = 5 )
+```
+
+Get rid of upper triangular portion
+```{r}
+# don't change this
+my_dot_out$z[lower.tri(my_dot_out$z)] <- FALSE
+
+```
+
+Do some weird prep (don't worry about it)
+```{r}
+# don't change this
+my_dot_out$z <- my_dot_out$z[, nrow(my_dot_out$z):1]
+```
+
+Plot using image() command
+```{r}
+# seriously - it will drive you crazy if you forget about this
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+# plot with image()
+image(x = my_dot_out$x, 
+      y = my_dot_out$y, 
+      z = my_dot_out$z,
+      main = "PRKAA1")
+```
+
+## Focal subplot
+
+Use new function on a section of the protein, save output (doesn't autoplot)
+```{r}
+my_dot_out <- dot_plot(prkaa_vector[100:200],
+        prkaa_vector[100:200],  
+        wsize = 40, 
+        wstep = 1,
+        nmatch = 5)
+```
+
+Get rid of upper triangular portion
+```{r}
+# don't change this
+my_dot_out$z[lower.tri(my_dot_out$z)] <- FALSE
+
+```
+
+Do some weird prep (don't worry about it)
+```{r}
+# don't change this
+my_dot_out$z <- my_dot_out$z[, nrow(my_dot_out$z):1]
+```
+
+Plot using image() command
+```{r}
+# seriously - it will drive you crazy if you forget about this
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+# plot with image()
+# don't change this
+image(x = my_dot_out$x, 
+      y = my_dot_out$y, 
+      z = my_dot_out$z,
+      main = "PRKAA1[100:200]")
+```
