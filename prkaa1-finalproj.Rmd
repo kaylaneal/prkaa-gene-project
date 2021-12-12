@@ -1,0 +1,678 @@
+---
+title: "final portfolio project"
+author: "kayla neal"
+date: "11/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRO
+
+The PRKAA1 gene encodes the protein that is the catalytic sub-unit of a protein kinase. Protein kinases regulate cellular AMP/ATP ratios. 
+
+The PRKAA1 gene also goes by: AMPK, AMPKa1, and AMPK alpha 1.
+
+### REFERENCES
+
+- [NCBI Base Page for PRKAA1](https://www.ncbi.nlm.nih.gov/gene/5562)
+
+- [Protein RefSeq Page](https://www.ncbi.nlm.nih.gov/protein/NP_006242.5)
+
+- [NCBI PRKAA1 Homolog Page](https://www.ncbi.nlm.nih.gov/homologene/49590)
+
+- [PRKAA1 Uniprot Page](https://www.uniprot.org/uniprot/Q13131)
+
+- [Protein Database for Crystalized Human PRKAA1](https://www.rcsb.org/structure/4RED)
+
+### LOAD PACKAGES
+
+TO DOWNLOAD PACKAGES...
+
+- from github: `devtools::install_github(“devloper_name/package”)` requires devtools to be installed via install.packages()
+
+- from CRAN: `install.packages(“package_name”)`
+
+- from BioConductor: `BioManager::install(“package_name”)` requires BioManager to be installed via install.packages()
+
+
+```{r prelimenaries, message=FALSE, warning=FALSE}
+# GitHub Packages
+library(compbio4all)
+
+# CRAN Packages
+library(ape)
+library(rentrez)
+library(seqinr)
+library(msa)
+library(ggmsa)
+library(ggplot2)
+library(pander)
+
+# BioConductor Packages
+library(Biostrings)
+library(drawProteins)
+```
+
+
+## PRKAA1 ACCESSION NUMBERS
+
+The PRKAA1 gene is present in multiple species. Information from the mRNA transcript, gene, protein, etc can be found from multiple databases.
+
+**RefSeq** - databank contains transcript, protein, and chromosome data. entries contain sequence information such as species name, structure, sequences, etc. the entries are manually curated and can be experimentally derived or predicted by computational means. 
+
+**Uniprot** - databank for well annotated, high quality proteins. entries contain the protein's definitive state, interactions, and 3D structures if they exist. the focus of uniprot is on protein structure and function.
+
+**PBD** - a database that only contains known 3D structures of proteins. 
+
+```{r accessions, fig.cap ="acession table"}
+# accession table
+common_names <- c("Humans", "Cows", "Mouse", "Rat",
+                  "Chicken", "Tropical Clawed Frog", "Zebrafish",
+                  "Thale Cress", "Horse", "Pig", "Orangutan")
+
+science_names <- c("Homo spapians", "Bos taurus", "Mus musculus", "Rattus norvegicus",
+                   "Gallus gallus", "Xenopus tropicalis", "Danio rerio",
+                   "Arabidopsis thaliana", "Equus caballus", "Sus scrofa", "Pongo abelii")
+
+rs <- c("NP_006242.5", "NP_001103272.1", "NP_001013385.3",  "NP_062015.2",
+        "NP_001034692.1", "NP_001120434.1", "NP_001103756.1",
+        "NP_566130.1", "NP_001075272.2", "NP_001161105.1", "NP_001127249.1")
+
+up <- c("Q13131", "A8E649", "Q5EG47", "P54645",
+        "Q2PUH1", "B1H2Z8", "A5WUM0",
+        NA, "Q2LGG0", "D0G7E1", "Q5RDH5")
+
+pdb <- c("4RED", NA, "5UFU", "4EAK",
+         NA, NA, NA,
+         NA, NA, NA, NA)
+
+# create dataframe to view
+acessions.df <- data.frame(name = common_names, 
+                           scientific_name = science_names, 
+                           refseq = rs, 
+                           uniprot = up, 
+                           protein_db = pdb)
+pander(acessions.df)
+```
+
+
+## DATA PREPARATION
+
+The function `rentrez::entrez_fetch()` downloads a single, specified FASTA file. `compbio4all::entrez_fetch_list()` is a wrapper function for `entrez_fetch()` that returns multiple FASTA files stored in a list object.
+
+Directly after downloading, FASTA files still contain the header, line breaks (\\n), and other unnecessary formatting. In order to use just the sequence, the files have to be cleaned. To clean fasta files, use `compbio4all::fasta_cleaner()`
+
+```{r alignments}
+# download and clean FASTA files
+
+prkaa_list <- compbio4all::entrez_fetch_list(id = acessions.df$refseq,
+                                                 db = "protein",
+                                                 rettype = "FASTA")
+
+
+for (i in 1:length(prkaa_list))
+{
+  prkaa_list[[i]] <- compbio4all::fasta_cleaner(prkaa_list[[i]], parse = F)
+}
+
+# label with the name of the organism instead of the defaul (accession number)
+names(prkaa_list) <- common_names
+```
+
+## PROTEIN EXPLORATION
+
+### KEY DOMAINS // PROTEIN DIAGRAM
+
+UniProt entries contain "Family & Domain" subsections that show the structure of the protein, what domains/repeats/regions are present, what the secondary structure contains, etc. The data recorded on UniProt varies based on how studied the gene/protein is. 
+
+By using a UniProt acession number, the BioConductor package **drawProteins** can extract information about the protein's domains, chains, regions, motifs, phosphorylation sites, and repeats *IF* that information is available.  
+
+```{r draw proteins}
+# download data from UniProt
+Q13131.feat <- drawProteins::get_features("Q13131")
+
+# convert data to dataframe and view
+Q13131.df <- drawProteins::feature_to_dataframe(Q13131.feat)
+```
+
+The plot created by **drawProteins** can vary based on the available data. There are different functions in the package to plot specific parts of the data.
+
+```{r plot some prots}
+## Domains Present
+domain.plt <- draw_canvas(Q13131.df) # create basic plot w/ longest protein and number of proteins
+domain.plt <- draw_chains(domain.plt, Q13131.df, label_size = 2.5) # plot the chains
+domain.plt <- draw_domains(domain.plt, Q13131.df) # add domains created by draw_chains
+
+# show domain plot:
+domain.plt
+```
+```{r plot prots 2}
+## Only the Receptor Domain
+recdom.plt <- draw_canvas(Q13131.df) 
+recdom.plt <- draw_chains(recdom.plt, Q13131.df, label_size = 2.5)
+recdom.plt <- draw_recept_dom(recdom.plt, Q13131.df) # plot receptor domains
+
+# Show plot:
+recdom.plt
+```
+
+```{r plot prots 3}
+## Plot Regions
+region.plt <- draw_canvas(Q13131.df)
+region.plt <- draw_chains(region.plt, Q13131.df, label_size = 2.5)
+region.plt <- draw_regions(region.plt, Q13131.df)
+
+# Show Plot:
+region.plt
+
+## Region AND Folding
+regfold.plt <- region.plt
+regfold.plt <- draw_folding(regfold.plt, Q13131.df)
+
+# Show Plot:
+regfold.plt
+```
+
+```{r plot prots 4}
+# Plot Repeats
+rep.plt <- draw_canvas(Q13131.df)
+rep.plt <- draw_chains(rep.plt, Q13131.df, label_size = 2.5)
+rep.plt <- draw_repeat(rep.plt, Q13131.df)
+
+# Show Plot:
+rep.plt
+
+## Plot Phosphorylation
+phos.plt <- draw_canvas(Q13131.df)
+phos.plt <- draw_chains(phos.plt, Q13131.df, label_size = 2.5)
+phos.plt <- draw_phospho(phos.plt, Q13131.df)
+
+phos.plt
+```
+
+Based on the discovery plots, the repeats and receptor domain information is not available for the PRKAA1 gene entry in UniProt. 
+
+```{r protein plot fin}
+prot.plt <- draw_canvas(Q13131.df)
+prot.plt <- draw_chains(prot.plt, Q13131.df, label_size = 2.5)
+
+# prot.plt <- draw_domains(prot.plt, Q13131.df) # domains
+prot.plt <- draw_folding(prot.plt, Q13131.df) # folding
+prot.plt <- draw_regions(prot.plt, Q13131.df) # regions
+prot.plt <- draw_phospho(prot.plt, Q13131.df) # phosphorylation
+
+prot.plt
+```
+
+
+### DOTPLOT
+
+Doing a self to self dot plot can reveal repeats. The `seqinr` package in R has a `dotPlot()` function that works for this task, all that's required is two sequence vectors. Altering the `wsize` `wstep` and `nmatch` arguments focuses the data and reduces the graph equivalent to background noise. 
+
+Using the human version of PRKAA1:
+```{r plot prep}
+# get the human PRKAA1 sequence from the FASTA list:
+humanSeq <- fasta_cleaner(prkaa_list[["Humans"]])
+  
+# confirm vector with data exploration
+is(humanSeq)
+```
+
+
+```{r dotty plotty}
+# set up 2 x 2 grid
+par(mfrow = c(2,2), 
+    mar = c(0,0,2,1))
+
+# Default Plot:
+dotPlot(humanSeq,
+        humanSeq, 
+        wsize = 1, 
+        nmatch = 1, 
+        main = "PRKAA Defaults")
+
+# plot 2:
+dotPlot(humanSeq,
+        humanSeq,  
+        wsize = 20,
+        nmatch = 5,
+        main = "PRKAA - size = 20, nmatch = 5")
+
+# plot 3: 
+dotPlot(humanSeq[0:200],
+        humanSeq[0:200],  
+        wsize = 30, 
+        nmatch = 5, 
+        main = "PRKAA region [0:200] w=30")
+
+# plot 4:
+dotPlot(humanSeq[100:200],
+        humanSeq[100:200], 
+        wsize = 40,
+        nmatch = 5,
+        main = "PRKAA region [100:200] w=40")
+
+
+```
+
+
+Plot 4 shows the clearest evidence of a repeated pattern:
+```{r focal plot, fig.cap = "focal dot plot"}
+par(mfrow = c(1,1), 
+    mar = c(4,4,4,4))
+
+dotPlot(humanSeq[100:200],
+        humanSeq[100:200], 
+        wsize = 40, 
+        nmatch = 5,
+        main = "PRKAA[100:200] w=40, m=5")
+```
+### PROTEIN PROPERTIES
+
+**Pfam** - A protein family database, works with UniProt.
+
+**Disprot** - Curated database for intrinsincally disordered proteins.
+
+**RepeatsDB** - Database of annotated tandem repeats.
+
+**CATH** - Database with a focus on classifications of protein structure
+
+Information for PRKAA1 was only found in the [Pfam database](http://pfam.xfam.org/protein/Q13131#tabview=tab0). 
+
+Pfam determines two large domains in the protein: *pkinase* from base 27 to 279 and *adenylate sensor* from base 406 to 503. The pkinase determination is consistent with the protein diagram created above. Pfam also makes note of 3 *low complexity* regions and 7 *disorder* regions, however they cover very small areas (as little as 3bp!) and could be part of a larger region. In fact, UniProt has only 2 regions (AIS and Disordered) and 1 domain (pkinase), as is seen in the protein diagram. 
+
+UniProt has the subcelluar location of the protein as the nucleus and the cytoplasm/cytosol. 
+
+The protein databank entry *4RED* is frequently used in these analyses. This entry shows a crystallized version of the protein collected from humans and rats. The structure appears to be mainly **alpha helices** but also contains a few **beta pleated sheets**
+
+
+## PROTEIN PREDICTION
+
+In a 1994 [paper](https://link.springer.com/article/10.1007%2FBF00813744) KC Chou uses *multivariable statistical* methods to predict the folding pattern in proteins. Using the sequence of the protein, the frequency of each amino acid is found and used to predict the fold type of the protein. 
+
+```{r fold setup}
+## Use Table 5 from the linked paper to get the training data used to build the Chou Method
+# aa names:
+aa.1 <- c("A", "R", "N", "D", "C",
+          "Q", "E", "G", "H", "I",
+          "L", "K", "M", "F", "P", 
+          "S","T", "W", "Y", "V")
+
+# frequency:
+## alpha:
+alpha.class <- c(285, 53, 97, 163, 22, 67, 134,
+                 197, 111, 91, 221, 249, 48, 123,
+                 82, 122, 119, 33, 63, 167)
+## beta:
+beta.class <- c(203, 67, 139, 121, 75, 122, 86,
+                297, 49, 120, 177, 115, 16, 85,
+                127, 341, 253, 44, 110, 229)
+## alpha + beta
+apb.class <- c(175, 78, 120, 111, 74, 74, 86,
+               171, 33, 93, 110, 112, 25, 52,
+               71, 126, 117, 30, 108, 123)
+## alpha/beta
+adb.class <- c(361, 146, 183, 244, 63, 114,
+               257, 377, 107, 239, 339, 321,
+               91, 158, 188, 327, 238, 72, 130, 378)
+
+## calculate proportions:
+alpha.prop <- alpha.class/sum(alpha.class)
+beta.prop <- beta.class/sum(beta.class)
+apb.prop <- apb.class/sum(apb.class)
+adb.prop <- adb.class/sum(adb.class)
+
+aa.prop <- data.frame(aplha = alpha.prop,
+                      beta = beta.prop,
+                      alpha.plus.beta = apb.prop,
+                      alpha.div.beta = adb.prop)
+row.names(aa.prop) <- aa.1
+pander(aa.prop)
+```
+
+Apply the data to predict the fold classificatin of PRKAA1:
+
+```{r fold pred prep}
+# vector of the protein sequence
+prkaa.classify <- fasta_cleaner(prkaa_list[["Humans"]], parse = TRUE)
+
+prkaa.freq.table <- table(prkaa.classify)/length(prkaa.classify)
+```
+
+Tables are not considered vectors in R:
+```{r tab to vec fun}
+table_to_vector <- function(table_x){
+  table.names <- attr(table_x, "dimnames")[[1]]
+  table.vec <- as.vector(table_x)
+  names(table.vec) <- table.names
+  return (table.vec)
+}
+```
+
+Use function to continue with fold prediction:
+```{r prk freq}
+prkaa.aa.freq <- table_to_vector(prkaa.freq.table)
+
+## if 'U' (unknown) is present in sequence, remove it
+aa.names <- names(prkaa.aa.freq)
+
+if (any(aa.names == "U")){
+  iU <- which(aa.names == "U")
+  prkaa.aa.freq <- prkaa.aa.freq[-iU]
+}
+
+## add to data table
+aa.prop$prkaa.freq <- prkaa.aa.freq
+```
+
+Cusom functions required to calculate similarity with this strategy:
+```{r calc strat}
+## Cosine Similarity:
+chou_cosine <- function(z.1, z.2){
+  z.1.abs <- sqrt(sum(z.1^2))
+  z.2.abs <- sqrt(sum(z.2^2))
+  my.cos <- sum(z.1*z.2)/(z.1.abs*z.2.abs)
+  return(my.cos)
+}
+
+## Correlation:
+chou_cor <- function(x,y){
+  numerator <- sum(x*y)
+  denominator <- sqrt((sum(x^2))*(sum(y^2)))
+  result <- numerator/denominator
+  return(result)
+}
+```
+
+Use these functions to calculate the correlation and cosine similarity in each column of the dataframe:
+
+```{r calc time}
+## correlation calculation
+corr.alpha <- chou_cor(aa.prop[,5], aa.prop[,1])
+corr.beta <- chou_cor(aa.prop[,5], aa.prop[,2])
+corr.apb <- chou_cor(aa.prop[,5], aa.prop[,3])
+corr.adb <- chou_cor(aa.prop[,5], aa.prop[,4])
+
+## cosine sim calculation
+cos.alpha <- chou_cosine(aa.prop[,5], aa.prop[,1])
+cos.beta <- chou_cosine(aa.prop[,5], aa.prop[,2])
+cos.apb <- chou_cosine(aa.prop[,5], aa.prop[,3])
+cos.adb <- chou_cosine(aa.prop[,5], aa.prop[,4])
+
+## calculate distance (requires flipped table)
+faa.prop <- t(aa.prop)
+round(faa.prop, 2)
+dist(faa.prop, method = "euclidean")
+
+### calculate individual differences
+dist.alph <- dist(faa.prop[c(1,5),], method = "euclidean")
+dist.bet <- dist(faa.prop[c(2,5),], method = "euclidean")
+dist.apb <- dist(faa.prop[c(3,5),], method = "euclidean")
+dist.adb <- dist(faa.prop[c(4,5),], method = "euclidean")
+
+```
+
+Compile all the calculations to view the potential fold prediction:
+```{r pred, fig.cap = "fold type analysis table"}
+fold.type <- c("alpha", "beta", "alpha + beta", "alpha / beta")
+
+corr.sim <- round(c(corr.alpha, corr.beta, corr.apb, corr.adb), 5)
+cos.sim <- round(c(cos.alpha, cos.beta, cos.apb, cos.adb), 5)
+euc.dist <- round(c(dist.alph, dist.bet, dist.apb, dist.adb), 5)
+
+sim.sum <- c("", "", "tied similarity", "tied similarity")
+dist.sum <- c("", "", "min distance", "")
+
+pred.df <- data.frame(fold.type,
+                      corr.sim,
+                      cos.sim,
+                      euc.dist,
+                      sim.sum,
+                      dist.sum)
+
+pander(pred.df)
+```
+
+
+## PAIRWISE ALIGNMENTS AND PID ANALYSIS
+
+Pairwise alignments compare two sequences. There are two measurements made during pairwise alignments: `score()` and `pid()`.
+
+**Scores** of alignments are computed based on amino acid matches. For example, the Needleman algorithm for calculating scores divides points based on: exact amino acid match, amino acid mismatch, gap creations, and gap expansions. BLOSUM is another popular scoring matrix, which is used below.
+R also supports creating unique scoring matrices by using the `nucleotideSubstitutionMatrix()` function.
+
+**PID** is percent (or proportion) identity between sequences. It can be found easily in R using the  `pid()` function. There are a couple variations, but mainly PID is calculated by amino acid matches/length of alignment.
+
+```{r pairwise prep}
+# choose 4 species for pairwise alignment
+up_species <- c("Human", "Orangutan", "Horse", "Chicken")
+up_accessions <- c("Q13131", "Q5RDH5", "Q2LGG0", "Q2PUH1")
+
+# download and clean sequences
+upH <- rentrez::entrez_fetch(id = "Q13131",
+                             db = "protein",
+                             rettype = "FASTA")
+upH <- compbio4all::fasta_cleaner(upH)
+
+upO <- rentrez::entrez_fetch(id = "Q5RDH5",
+                             db = "protein",
+                             rettype = "FASTA")
+upO <- compbio4all::fasta_cleaner(upO)
+
+upHorse <- rentrez::entrez_fetch(id = "Q2LGG0",
+                             db = "protein",
+                             rettype = "FASTA")
+upHorse <- compbio4all::fasta_cleaner(upHorse)
+
+upC <- rentrez::entrez_fetch(id = "Q2PUH1",
+                             db = "protein",
+                             rettype = "FASTA")
+upC <- compbio4all::fasta_cleaner(upC)
+
+# Convert vector to string
+upHS <- paste(upH, collapse = "")
+upOS <- paste(upO, collapse = "")
+upHoS <- paste(upHorse, collapse = "")
+upCS <- paste(upC, collapse = "")
+
+# Make sure everything is capitalized
+upHS <- toupper(upHS)
+upOS <- toupper(upOS)
+upHoS <- toupper(upHoS)
+upCS <- toupper(upCS)
+
+```
+
+```{r pairwise alignments}
+# Load Substitution Matrix
+data(BLOSUM50)
+
+# Human vs Orangutan
+ho_align <- Biostrings::pairwiseAlignment(upHS, upOS,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+# Human vs Horse
+hho_align <- Biostrings::pairwiseAlignment(upHS, upHoS,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+# Human vs Chicken
+hc_align <- Biostrings::pairwiseAlignment(upHS, upCS,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+# Orangutan vs Horse
+oho_align <- Biostrings::pairwiseAlignment(upOS, upHoS,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+# Orangutan vs Chicken
+oc_align <- Biostrings::pairwiseAlignment(upOS, upCS,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+# Horse vs Chicken
+hoc_align <- Biostrings::pairwiseAlignment(upHoS, upCS,
+                                              substitutionMatrix = BLOSUM50,
+                                              gapOpening = -2,
+                                              gapExtension = -8,
+                                              scoreOnly = FALSE)
+```
+
+Seeing the full alignments and the individual scores is nice, but it's a lot easier to understand and interpret in a table. The data format of the table is: pid1/pid2/pid3/pid4.
+```{r pid table, fig.cap = "pid comparison"}
+# set up the data:
+ho.pid1 <- c(round(pid(ho_align, type = "PID1"), digits = 1))
+ho.pid2 <- c(round(pid(ho_align, type = "PID2"), digits = 1))
+ho.pid3 <- c(round(pid(ho_align, type = "PID3"), digits = 1))
+ho.pid4 <- c(round(pid(ho_align, type = "PID4"), digits = 1))
+
+hho.pid1 <- c(round(pid(hho_align, type = "PID1"), digits = 1))
+hho.pid2 <- c(round(pid(hho_align, type = "PID2"), digits = 1))
+hho.pid3 <- c(round(pid(hho_align, type = "PID3"), digits = 1))
+hho.pid4 <- c(round(pid(hho_align, type = "PID4"), digits = 1))
+
+hc.pid1 <- c(round(pid(hc_align, type = "PID1"), digits = 1))
+hc.pid2 <- c(round(pid(hc_align, type = "PID2"), digits = 1))
+hc.pid3 <- c(round(pid(hc_align, type = "PID3"), digits = 1))
+hc.pid4 <- c(round(pid(hc_align, type = "PID4"), digits = 1))
+
+oho.pid1 <- c(round(pid(oho_align, type = "PID1"), digits = 1))
+oho.pid2 <- c(round(pid(oho_align, type = "PID2"), digits = 1))
+oho.pid3 <- c(round(pid(oho_align, type = "PID3"), digits = 1))
+oho.pid4 <- c(round(pid(oho_align, type = "PID4"), digits = 1))
+
+oc.pid1 <- c(round(pid(oc_align, type = "PID1"), digits = 1))
+oc.pid2 <- c(round(pid(oc_align, type = "PID2"), digits = 1))
+oc.pid3 <- c(round(pid(oc_align, type = "PID3"), digits = 1))
+oc.pid4 <- c(round(pid(oc_align, type = "PID4"), digits = 1))
+
+hoc.pid1 <- c(round(pid(hoc_align, type = "PID1"), digits = 1))
+hoc.pid2 <- c(round(pid(hoc_align, type = "PID2"), digits = 1))
+hoc.pid3 <- c(round(pid(hoc_align, type = "PID3"), digits = 1))
+hoc.pid4 <- c(round(pid(hoc_align, type = "PID4"), digits = 1))
+
+ho.pid <- paste(ho.pid1, ho.pid2, ho.pid3, ho.pid4, sep = "/")
+hho.pid <- paste(hho.pid1, hho.pid2, hho.pid3, hho.pid4, sep = "/")
+hc.pid <- paste(hc.pid1, hc.pid2, hc.pid3, hc.pid4, sep = "/")
+oho.pid <- paste(oho.pid1, oho.pid2, oho.pid3, oho.pid4, sep = "/")
+oc.pid <- paste(oc.pid1, oc.pid2, oc.pid3, oc.pid4, sep = "/")
+hoc.pid <- paste(hoc.pid1, hoc.pid2, hoc.pid3, hoc.pid4, sep = "/")
+
+# make the table:
+col.names <- up_species
+row1 <- c("--", ho.pid, hho.pid, hc.pid)
+row2 <- c("--", "--", oho.pid, oc.pid)
+row3 <- c("--", "--", "--", hoc.pid)
+row4 <- c("--", "--", "--", "--")
+
+pid.tab <- data.frame(
+                      human = row1,
+                      orang = row2,
+                      horse = row3,
+                      chick = row4,
+                      row.names = col.names
+                      )
+
+pander(pid.tab)
+
+```
+
+Chimps and Humans are very closely related. There is not a PRKAA1 gene (experimentally derived!) in NCBI yet, so comparing Orangutans and Humans will suffice.
+
+```{r monke vs hum, fig.cap = "human and orangutan pid comparison"}
+# same pid calculations as above, just rounded out a bit further
+ho.pid1 <- c(round(pid(ho_align, type = "PID1"), digits = 2))
+ho.pid2 <- c(round(pid(ho_align, type = "PID2"), digits = 2))
+ho.pid3 <- c(round(pid(ho_align, type = "PID3"), digits = 2))
+ho.pid4 <- c(round(pid(ho_align, type = "PID4"), digits = 2))
+
+# build table
+ho.tab <- data.frame(calculation.method = c("PID1", "PID2", "PID3", "PID4"),
+                     pid = c(ho.pid1, ho.pid2, ho.pid3, ho.pid4))
+
+pander(ho.tab)
+
+```
+
+## MULTIPLE SEQUENCE ALIGNMENT
+
+A Multiple Sequence Alignment (MSA) creates an alignment summary of the protein across species.
+
+In order to use `ggmsa()`, the FATA files need to be in a named vector, currently they are stored as a list. 
+
+```{r vectorize}
+prkaa_vector <- rep(NA, length(prkaa_list))
+
+for (i in 1:length(prkaa_vector))
+{
+  prkaa_vector[i] <- prkaa_list[[i]]
+}
+
+names(prkaa_vector) <- names(prkaa_list)
+```
+
+```{r build msa}
+prkaa_vss <- Biostrings::AAStringSet(prkaa_vector)
+prkaa_alignment <- msa(prkaa_vss,
+                       method = "ClustalW")
+
+print(paste("original class of alignment:", class(prkaa_alignment)))
+class(prkaa_alignment) <- "AAMultipleAlignment"
+print(paste("change class to:", class(prkaa_alignment)))
+```
+
+```{r visualize msa, fig.cap = "msa plot"}
+# without specifying start and end, the msa is too small to see
+ggmsa::ggmsa(prkaa_alignment,
+             start = 100,
+             end = 200)
+
+```
+Viewing the amino acid sequence between bases 100 and 100 shows a highly conserved region in the protein and is consistent with the dotplot above. This suggests this part of the sequence is evolutionary important. 
+
+
+## DISTANCE MATRIX
+
+While an MSA is a good way to examine a sequence its hard to assess all of the information visually.  A phylogenetic tree allows you to summarize patterns in an MSA.  The fastest way to make phylogenetic trees to is first summarize an MSA using a **genetic distance matrix**. The more amino acids that are identical to each other, the smaller the genetic distance is between them and the less evolution has occurred.  
+
+Calculating genetic distance from an MSA is done using the `seqinr::dist.alignment()` function.
+
+```{r dist mat, fig.cap = "distance matrix"}
+# change the data class to work with seqinr
+prkaa.align.seq <- msaConvert(prkaa_alignment, type = "seqinr::alignment")
+
+# make a distance matrix
+prkaa.distance <- seqinr::dist.alignment(prkaa.align.seq, 
+                                       matrix = "identity")
+# round the data to make easier to look at
+prkaa.distance.rnd <- round(prkaa.distance, digits = 3)
+
+prkaa.distance.rnd
+```
+
+
+## PHYLOGENY
+
+One way to build a **phylognetic tree** is to use a **neighbor joining** algorithm, which uses genetic distance to put sequences into clades. The ape function `nj()` uses this method by taking in a distance matrix as an argument. 
+
+```{r tree, fig.cap = "phylogenetic tree" }
+prk.tree <-  ape::nj(prkaa.distance)
+
+ape::plot.phylo(prk.tree,
+                use.edge.length = TRUE,
+                adj = 0,
+                main = "PRKAA1 Phylogeny")
+```
+
+
+
